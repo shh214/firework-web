@@ -1,0 +1,15 @@
+# Local photograph atlas and study data
+/us-fireworks-cloud/atlas.webp
+/Dataset/
+/research/
+/models/
+
+# Machine-local files
+.env
+.env.*
+.venv/
+.venv-*/
+__pycache__/
+node_modules/
+.DS_Store
+._*
