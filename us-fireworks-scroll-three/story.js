@@ -34,7 +34,7 @@
       throw new Error("Photo IDs do not match the sphere and matrix layouts.");
     }
     const atlas = new Image();
-    atlas.src = "../us-fireworks-cloud/" + cloud.atlas.file;
+    atlas.src = "fireworks-atlas.webp?v=058e6a85";
     await atlas.decode();
     const bubbles = window.FIREWORK_CIRCLES;
     const photoIndex = new Map(matrix.photoIds.map((id, i) => [id, i]));

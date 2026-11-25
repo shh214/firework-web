@@ -19,7 +19,7 @@
     const sheet = document.createElement("canvas");
     sheet.width = Math.max(1, Math.round(image.naturalWidth * ratio));
     sheet.height = Math.max(1, Math.round(image.naturalHeight * ratio));
-    const ctx = sheet.getContext("2d", { alpha: false });
+    const ctx = sheet.getContext("2d");
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(image, 0, 0, sheet.width, sheet.height);
     return sheet;
@@ -42,6 +42,8 @@
         ctx.globalAlpha = 1;
         ctx.fillStyle = "#101010";
         ctx.fillRect(0, 0, width, height);
+        const tintAlpha = morph * opacity;
+        const photoWeight = morph < 1 ? (1 - morph) / (1 - tintAlpha) : 0;
         for (let n = 0; n < order.length; n++) {
           const i = order[n], k = i * 6;
           const w = frame[k+2], h = frame[k+3];
@@ -51,15 +53,14 @@
           const sheet = side <= sheets[0].size ? sheets[0]
             : side <= sheets[1].size ? sheets[1] : sheets[sheets.length - 1];
           const rect = frames[i], r = sheet.ratio;
+          const light = frame[k+5];
           if (morph > 0) {
-            const alpha = 1 - (1 - opacity) * morph;
-            const tintAlpha = morph * alpha;
             ctx.save();
             ctx.beginPath();
             ctx.roundRect(x, y, w, h, Math.min(w, h) * morph / 2);
             ctx.clip();
             if (morph < 1) {
-              ctx.globalAlpha = (alpha - tintAlpha) / (1 - tintAlpha);
+              ctx.globalAlpha = light * photoWeight;
               ctx.drawImage(sheet.image, rect.x*r, rect.y*r, rect.width*r, rect.height*r, x, y, w, h);
             }
             ctx.globalAlpha = tintAlpha;
@@ -68,13 +69,8 @@
             ctx.restore();
             continue;
           }
+          ctx.globalAlpha = light;
           ctx.drawImage(sheet.image, rect.x*r, rect.y*r, rect.width*r, rect.height*r, x, y, w, h);
-          const light = frame[k+5];
-          if (light < 1) {
-            ctx.globalAlpha = 1 - light;
-            ctx.fillRect(x, y, w, h);
-            ctx.globalAlpha = 1;
-          }
         }
       },
     };
@@ -114,13 +110,13 @@
       uniform float uOpacity;
       out vec4 color;
       void main() {
-        vec3 photo = mix(vec3(16.0/255.0),texture(uAtlas, uv).rgb,light);
+        vec4 photo = texture(uAtlas, uv) * light;
         float radius = min(halfSize.x, halfSize.y) * uMorph;
         vec2 d = abs(local) - halfSize + radius;
         float distanceToEdge = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - radius;
         float aa = max(fwidth(distanceToEdge), .0001);
         float mask = uMorph == 0.0 ? 1.0 : clamp(.5 - distanceToEdge / aa, 0.0, 1.0);
-        color = vec4(mix(photo,tint,uMorph), mask * mix(1.0,uOpacity,uMorph));
+        color = mask * mix(photo, vec4(tint * uOpacity, uOpacity), uMorph);
       }`;
     const program = gl.createProgram();
     for (const [type, source] of [[gl.VERTEX_SHADER, vert], [gl.FRAGMENT_SHADER, frag]]) {
@@ -155,6 +151,7 @@
     const ratio = Math.min(cell, Math.floor(cell * maxTexture / largest)) / cell;
     if (!ratio) throw new Error("Photo atlas exceeds texture limits");
     const sheet = resampleAtlas(image, ratio);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sheet);
     gl.generateMipmap(gl.TEXTURE_2D);
     if (gl.getError() !== gl.NO_ERROR) throw new Error("Could not allocate the photo atlas");
@@ -175,7 +172,7 @@
     }
     gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
-    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.clearColor(backdrop, backdrop, backdrop, 1);
     return {
       resize(width, height) {

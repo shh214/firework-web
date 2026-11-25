@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>烟花照片预览</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #101010; color: #eee; }
+    main { max-width: 1160px; margin: 0 auto; padding: 28px 18px; }
+    h1 { margin: 0; font-size: clamp(24px, 5vw, 36px); }
+    header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; }
+    a { color: #cdf; }
+    nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 0; }
+    button, select { font: inherit; padding: 5px 9px; color: inherit; background: #232323; border: 1px solid #555; border-radius: 4px; }
+    button:disabled { opacity: .45; }
+    #photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; }
+    figure { margin: 0; text-align: center; }
+    canvas { width: 100%; height: auto; display: block; background: #181818; border-radius: 4px; }
+    figcaption { padding-top: 3px; color: #bbb; font-size: 12px; }
+  </style>
+  <script src="../us-fireworks-cloud/cloud-data.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><h1>烟花照片预览</h1><a href="index.html">打开三层可视化</a></header>
+    <p id="status" role="status">正在载入照片…</p>
+    <nav aria-label="照片分页" hidden>
+      <button type="button" data-step="-1">上一页</button>
+      <select aria-label="跳转到指定页"></select>
+      <button type="button" data-step="1">下一页</button>
+    </nav>
+    <section id="photos" aria-label="去背景后的烟花照片"></section>
+  </main>
+  <script>
+    async function start() {
+      const { photos, atlas } = window.FIREWORK_CLOUD;
+      const image = new Image();
+      image.src = "fireworks-atlas.webp";
+      await image.decode();
+      const gallery = document.querySelector("#photos");
+      const status = document.querySelector("#status");
+      const navigation = document.querySelector("nav");
+      const select = navigation.querySelector("select");
+      const [previous, next] = navigation.querySelectorAll("button");
+      const pageSize = 96;
+      const pages = Math.ceil(photos.length / pageSize);
+      for (let i = 0; i < pages; i++) select.add(new Option(`第 ${i + 1} 页 / 共 ${pages} 页`, i));
+
+      function render(page) {
+        const start = page * pageSize;
+        const end = Math.min(start + pageSize, photos.length);
+        const tiles = document.createDocumentFragment();
+        for (let i = start; i < end; i++) {
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = atlas.cell;
+          canvas.setAttribute("role", "img");
+          canvas.setAttribute("aria-label", `烟花照片 ${photos[i].id}`);
+          const x = i % atlas.cols * atlas.cell;
+          const y = Math.floor(i / atlas.cols) * atlas.cell;
+          canvas.getContext("2d").drawImage(image, x, y, atlas.cell, atlas.cell, 0, 0, atlas.cell, atlas.cell);
+          const figure = document.createElement("figure");
+          const caption = document.createElement("figcaption");
+          caption.textContent = photos[i].id;
+          figure.append(canvas, caption);
+          tiles.append(figure);
+        }
+        gallery.replaceChildren(tiles);
+        status.textContent = `第 ${start + 1}–${end} 张，共 ${photos.length.toLocaleString("zh-CN")} 张`;
+        select.value = page;
+        previous.disabled = page === 0;
+        next.disabled = page === pages - 1;
+      }
+
+      select.addEventListener("change", () => render(Number(select.value)));
+      for (const button of [previous, next]) {
+        button.addEventListener("click", () => render(Number(select.value) + Number(button.dataset.step)));
+      }
+      render(0);
+      navigation.hidden = false;
+    }
+    window.addEventListener("DOMContentLoaded", () => {
+      start().catch(error => {
+        console.error(error);
+        document.querySelector("#status").textContent = "照片未能载入。请确认预览页旁有 fireworks-atlas.webp。";
+      });
+    });
+  </script>
+</body>
+</html>
