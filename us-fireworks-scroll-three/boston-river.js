@@ -171,13 +171,13 @@
       }
     }
 
-    function draw(top, reduceMotion) {
+    function draw(top) {
       if (section.hidden) return;
       const height = viewport.clientHeight;
       const width = viewport.clientWidth;
       if (!height || !width) return;
       const scrollRange = section.offsetHeight - height;
-      const progress = reduceMotion ? Number(top <= 1) : clamp(-top / Math.max(1, scrollRange));
+      const progress = clamp(-top / Math.max(1, scrollRange));
       const ratio = Math.min(devicePixelRatio || 1, 2);
       if (progress === lastTime && width === lastWidth && height === lastHeight && ratio === lastRatio) return;
       if (width !== lastWidth || height !== lastHeight || ratio !== lastRatio) resizeCanvas(width, height, ratio);

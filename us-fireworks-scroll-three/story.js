@@ -196,7 +196,7 @@
     function draw() {
       requested = false;
       const nextTop = nextAct.hidden ? Infinity : nextAct.getBoundingClientRect().top;
-      bostonRiver.draw(nextTop, reducedMotion.matches);
+      bostonRiver.draw(nextTop);
       const runwayLength = storyRunway.offsetHeight;
       const runway = Math.max(1, (runwayLength - height*.24) / 2);
       const distance = playhead.value * runwayLength;

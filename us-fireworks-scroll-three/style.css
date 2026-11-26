@@ -139,6 +139,3 @@
 @media (max-width: 650px) {
   .boston-river-map { width: min(94vw, 148dvh); }
 }
-@media (prefers-reduced-motion: reduce) {
-  #boston-river::after { display: none; }
-}
