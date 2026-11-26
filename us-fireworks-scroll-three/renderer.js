@@ -1,8 +1,6 @@
 (() => {
   "use strict";
 
-  const backdrop = 16 / 255;
-
   function atlasFrames({ atlas, photos }) {
     return photos.map(({ w, h }, i) => {
       const scale = atlas.cell / Math.max(w, h);
@@ -40,7 +38,7 @@
       },
       draw(frame, order, morph = 0) {
         ctx.globalAlpha = 1;
-        ctx.fillStyle = "#101010";
+        ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, width, height);
         const tintAlpha = morph * opacity;
         const photoWeight = morph < 1 ? (1 - morph) / (1 - tintAlpha) : 0;
@@ -173,7 +171,7 @@
     gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.clearColor(backdrop, backdrop, backdrop, 1);
+    gl.clearColor(0, 0, 0, 1);
     return {
       resize(width, height) {
         gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
@@ -248,6 +246,12 @@
     }
     return {
       resize,
+      drawCutout(context, index) {
+        const { x, y, width, height } = frames[index];
+        context.canvas.width = width;
+        context.canvas.height = height;
+        context.drawImage(atlasImage, x, y, width, height, 0, 0, width, height);
+      },
       draw(frame, order, morph = 0) {
         lastFrame = frame;
         lastOrder = order;
