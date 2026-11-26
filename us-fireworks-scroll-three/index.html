@@ -4,20 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#101010">
+  <meta name="theme-color" content="#000000">
   <link rel="icon" href="data:,">
   <title>美国独立日烟花 · 球体、城市矩阵与烟花色带</title>
   <link rel="stylesheet" href="../us-fireworks-scroll/style.css">
   <script defer src="../us-fireworks-cloud/cloud-data.js"></script>
   <script defer src="../us-fireworks-sphere/sphere-data.js"></script>
   <script defer src="../us-fireworks-sphere/layout.js"></script>
-  <link rel="stylesheet" href="style.css?v=city-entry-click">
+  <link rel="stylesheet" href="style.css?v=boston-photo-scale">
   <script defer src="circle-layout.js"></script>
   <script defer src="../us-fireworks-scroll/matrix-layout.js"></script>
   <script defer src="../us-fireworks-scroll/vendor/gsap.min.js"></script>
   <script defer src="../us-fireworks-scroll/vendor/ScrollTrigger.min.js"></script>
-  <script defer src="renderer.js"></script>
-  <script defer src="story.js?v=city-entry-click"></script>
+  <script defer src="assets/boston-water.js"></script>
+  <script defer src="boston-river.js?v=boston-photo-scale-119"></script>
+  <script defer src="renderer.js?v=boston-firework-preview"></script>
+  <script defer src="story.js?v=boston-firework-preview"></script>
 </head>
 <body>
   <main>
@@ -35,6 +37,18 @@
     </div>
     <section id="next-act" aria-labelledby="next-act-title" hidden>
       <h2 id="next-act-title" tabindex="-1">第四幕</h2>
+      <div id="boston-river" hidden>
+        <div class="boston-river-viewport">
+          <div class="boston-river-map">
+            <img src="assets/boston-charles-river-black-white.svg" width="1486" height="858" decoding="async" alt="波士顿与剑桥之间的查尔斯河。波士顿烟花照片的色圆随滚动落入河道。">
+            <svg class="boston-river-banks" viewBox="0 0 1486 858" aria-hidden="true">
+              <path></path>
+            </svg>
+          </div>
+          <div class="boston-river-previews" aria-hidden="true"></div>
+          <canvas class="boston-river-circles" aria-hidden="true"></canvas>
+        </div>
+      </div>
     </section>
   </main>
 </body>

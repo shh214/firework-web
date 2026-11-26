@@ -72,6 +72,14 @@
     const nextAct = document.getElementById("next-act");
     const nextActTitle = document.getElementById("next-act-title");
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+    const bostonCity = bubbles.cities.findIndex(([name]) => name === "Boston");
+    const bostonRiver = window.createBostonRiver(
+      document.getElementById("boston-river"),
+      bubbles.circles.filter(([, city]) => city === bostonCity),
+      bubbles.palette,
+      bubbles.viewport,
+      (id, context) => renderer.drawCutout(context, photoIndex.get(id)),
+    );
     let enteredNextAct = false;
     const cityButtons = bubbles.cities.map(([name]) => {
       const button = document.createElement("button");
@@ -79,11 +87,13 @@
       button.className = "city-entry";
       button.setAttribute("aria-label", name);
       button.addEventListener("click", () => {
-        nextAct.hidden = false;
         nextAct.dataset.city = name;
+        bostonRiver.setVisible(name === "Boston");
+        nextAct.hidden = false;
         nextActTitle.textContent = "第四幕 · " + name;
         nextActTitle.focus({ preventScroll: true });
         window.scrollTo({ top: nextAct.offsetTop, behavior: reducedMotion.matches ? "instant" : "smooth" });
+        requestDraw();
       });
       entries.append(button);
       return button;
@@ -185,6 +195,8 @@
 
     function draw() {
       requested = false;
+      const nextTop = nextAct.hidden ? Infinity : nextAct.getBoundingClientRect().top;
+      bostonRiver.draw(nextTop, reducedMotion.matches);
       const runwayLength = storyRunway.offsetHeight;
       const runway = Math.max(1, (runwayLength - height*.24) / 2);
       const distance = playhead.value * runwayLength;
@@ -193,7 +205,8 @@
       names.style.opacity = String(smooth((t - .79) / .20) * (1 - smooth(u / .27)));
       names.setAttribute("aria-hidden", String(t <= .79 || u >= .27));
       axis.style.opacity = String(smooth((u-.48)/.44));
-      entries.hidden = u < .98 || (!nextAct.hidden && nextAct.getBoundingClientRect().top <= 1);
+      entries.hidden = u < .98 || nextTop <= 1;
+      if (nextTop <= 0) return;
       canvas.classList.toggle("rotatable", t === 0);
       if (u > 0) {
         const travel = smooth(u);
@@ -239,6 +252,7 @@
         enteredNextAct = true;
       } else if (enteredNextAct || event.type === "scrollend") {
         nextAct.hidden = true;
+        bostonRiver.setVisible(false);
         enteredNextAct = false;
       }
       requestDraw();
