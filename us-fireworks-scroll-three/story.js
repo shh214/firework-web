@@ -67,6 +67,27 @@
     });
     const endFrame = new Float32Array(count * 6);
     const axis = document.getElementById("axis");
+    const entries = document.getElementById("city-entries");
+    const storyRunway = document.getElementById("story-runway");
+    const nextAct = document.getElementById("next-act");
+    const nextActTitle = document.getElementById("next-act-title");
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+    let enteredNextAct = false;
+    const cityButtons = bubbles.cities.map(([name]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "city-entry";
+      button.setAttribute("aria-label", name);
+      button.addEventListener("click", () => {
+        nextAct.hidden = false;
+        nextAct.dataset.city = name;
+        nextActTitle.textContent = "第四幕 · " + name;
+        nextActTitle.focus({ preventScroll: true });
+        window.scrollTo({ top: nextAct.offsetTop, behavior: reducedMotion.matches ? "instant" : "smooth" });
+      });
+      entries.append(button);
+      return button;
+    });
     function axisElement(tag, attrs) {
       const el = document.createElementNS(names.namespaceURI, tag);
       for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
@@ -86,10 +107,16 @@
         endFrame[k+5] = 1;
       });
       axis.replaceChildren();
-      const ticks = bubbles.cities.map(([name, x]) => left + x * scale);
+      const ticks = bubbles.cities.map(([, x]) => left + x * scale);
       const y = bubbles.axisY * scale;
+      entries.style.top = y + "px";
+      let columnLeft = 0;
       axisElement("line", {x1:ticks[0], x2:ticks.at(-1), y1:y, y2:y, stroke:"#858580", "stroke-width":Math.max(.6,.75*scale)});
       bubbles.cities.forEach(([name], i) => {
+        const columnRight = i + 1 < ticks.length ? (ticks[i] + ticks[i+1]) / 2 : width;
+        cityButtons[i].style.left = columnLeft + "px";
+        cityButtons[i].style.width = (columnRight - columnLeft) + "px";
+        columnLeft = columnRight;
         const x = ticks[i], small = scale < .55, labelY = y + 13*scale;
         axisElement("line", {x1:x, x2:x, y1:y, y2:y+7*scale, stroke:"#a6a59f", "stroke-width":Math.max(.6,.75*scale)});
         const label = axisElement("text", {x, y:labelY, fill:"#dededa", "font-size":Math.max(10,15.7*scale),
@@ -101,7 +128,6 @@
     const meter = document.createElement("canvas").getContext("2d");
     const orientation = [1,0,0, 0,1,0, 0,0,1];
     const playhead = { value: 0 };
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
     let width, height, sourceCenters, targetCenters, requested = false;
 
     function projectSphere() {
@@ -159,14 +185,15 @@
 
     function draw() {
       requested = false;
-      const runway = Math.max(1, (document.documentElement.scrollHeight - innerHeight - height*.24) / 2);
-      const distance = playhead.value * (document.documentElement.scrollHeight - innerHeight);
+      const runwayLength = storyRunway.offsetHeight;
+      const runway = Math.max(1, (runwayLength - height*.24) / 2);
+      const distance = playhead.value * runwayLength;
       const t = clamp01(distance / runway);
       const u = clamp01((distance - runway - height*.24) / runway);
       names.style.opacity = String(smooth((t - .79) / .20) * (1 - smooth(u / .27)));
       names.setAttribute("aria-hidden", String(t <= .79 || u >= .27));
       axis.style.opacity = String(smooth((u-.48)/.44));
-      axis.setAttribute("aria-hidden", String(u <= .48));
+      entries.hidden = u < .98 || (!nextAct.hidden && nextAct.getBoundingClientRect().top <= 1);
       canvas.classList.toggle("rotatable", t === 0);
       if (u > 0) {
         const travel = smooth(u);
@@ -205,6 +232,16 @@
         requested = true;
         requestAnimationFrame(draw);
       }
+    }
+    function updateNextAct(event) {
+      if (nextAct.hidden) return;
+      if (nextAct.getBoundingClientRect().top < height - 1) {
+        enteredNextAct = true;
+      } else if (enteredNextAct || event.type === "scrollend") {
+        nextAct.hidden = true;
+        enteredNextAct = false;
+      }
+      requestDraw();
     }
     function resize() {
       width = stage.clientWidth;
@@ -263,12 +300,14 @@
 
     resize();
     new ResizeObserver(resize).observe(stage);
+    window.addEventListener("scroll", updateNextAct, { passive: true });
+    window.addEventListener("scrollend", updateNextAct);
     gsap.registerPlugin(ScrollTrigger);
     gsap.to(playhead, {
       value: 1,
       ease: "none",
       onUpdate: requestDraw,
-      scrollTrigger: { start: 0, end: "max", scrub: reducedMotion.matches ? true : 0.16 },
+      scrollTrigger: { start: 0, end: () => storyRunway.offsetHeight, scrub: reducedMotion.matches ? true : 0.16 },
     });
   }
   start().catch(error => {
