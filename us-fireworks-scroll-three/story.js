@@ -78,7 +78,6 @@
       bubbles.circles.filter(([, city]) => city === bostonCity),
       bubbles.palette,
       bubbles.viewport,
-      (id, context) => renderer.drawCutout(context, photoIndex.get(id)),
     );
     let enteredNextAct = false;
     const cityButtons = bubbles.cities.map(([name]) => {

@@ -7,7 +7,6 @@
   const circleGap = .35;
   const fallDuration = .23;
   const dimOpacity = .22;
-  const previewEnlargement = 1.19;
   const clamp = value => Math.min(1, Math.max(0, value));
   const mix = (from, to, amount) => from + (to - from) * amount;
   const smooth = value => value * value * (3 - 2 * value);
@@ -89,7 +88,7 @@
 
   function layoutRiver(records, palette) {
     const byHorizontalPosition = (a, b) => a.x - b.x || a.y - b.y;
-    const sources = records.map(([id, , x, y, radius, family]) => ({ id, x, y, radius, family }))
+    const sources = records.map(([, , x, y, radius, family]) => ({ x, y, radius, family }))
       .sort(byHorizontalPosition);
     const { targets, candidates } = sampleWater(sources.length);
     targets.sort(byHorizontalPosition);
@@ -125,7 +124,7 @@
     return nodes;
   }
 
-  window.createBostonRiver = (section, records, palette, sourceViewport, drawCutout) => {
+  window.createBostonRiver = (section, records, palette, sourceViewport) => {
     const viewport = section.querySelector(".boston-river-viewport");
     const mapFrame = viewport.querySelector(".boston-river-map");
     const map = mapFrame.querySelector("img");
@@ -133,10 +132,6 @@
     banks.querySelector("path").setAttribute("d", shoreline);
     const canvas = viewport.querySelector(".boston-river-circles");
     const context = canvas.getContext("2d");
-    const previews = viewport.querySelector(".boston-river-previews");
-    const sourceRadii = records.map(([, , , , radius]) => radius).sort((a, b) => a - b);
-    const middle = Math.floor(sourceRadii.length / 2);
-    const referenceRadius = mix(sourceRadii[middle], sourceRadii[Math.floor((sourceRadii.length - 1) / 2)], .5);
     const playhead = { flight: 0 };
     const timeline = gsap.timeline({ paused: true })
       .addLabel("revealMap", .035)
@@ -167,7 +162,6 @@
       lastTime = undefined;
       if (!visible) {
         pointer = view = hovered = undefined;
-        clearPreviews();
       }
     }
 
@@ -191,7 +185,6 @@
         view = hovered = undefined;
         context.setTransform(ratio, 0, 0, ratio, 0, 0);
         context.clearRect(0, 0, width, height);
-        clearPreviews();
         return;
       }
       nodes ??= layoutRiver(records, palette);
@@ -243,73 +236,12 @@
       }
     }
 
-    function softenEdges(context) {
-      const { width, height } = context.canvas;
-      context.save();
-      context.globalCompositeOperation = "destination-in";
-      for (const [x, y] of [[width, 0], [0, height]]) {
-        const mask = context.createLinearGradient(0, 0, x, y);
-        mask.addColorStop(0, "transparent");
-        mask.addColorStop(.16, "#000");
-        mask.addColorStop(.84, "#000");
-        mask.addColorStop(1, "transparent");
-        context.fillStyle = mask;
-        context.fillRect(0, 0, width, height);
-      }
-      context.restore();
-    }
-
-    function clearPreviews() {
-      if (!previews.firstChild) return;
-      gsap.killTweensOf(Array.from(previews.children));
-      previews.replaceChildren();
-    }
-
-    function showPreview(node, x, y) {
-      const preview = document.createElement("canvas");
-      preview.className = "boston-firework-preview";
-      preview.style.left = x + "px";
-      preview.style.top = y + "px";
-      const id = node.source.id;
-      preview.dataset.photoId = id;
-      const previewContext = preview.getContext("2d");
-      // Compare the longest side so portrait and landscape photos use the same scale.
-      function sizePreview() {
-        const aspect = preview.width / Math.max(preview.width, preview.height);
-        preview.style.setProperty("--preview-width-factor",
-          String(aspect * previewEnlargement * node.source.radius / referenceRadius));
-      }
-      drawCutout(id, previewContext);
-      sizePreview();
-      softenEdges(previewContext);
-      previews.append(preview);
-      gsap.to(preview, {
-        opacity: 0, delay: .55, duration: .85, ease: "sine.inOut",
-        onComplete: () => preview.remove(),
-      });
-
-      if (location.protocol === "file:") {
-        // The full-size cutouts are available in the project workspace.
-        const image = new Image();
-        image.src = "../../us-fireworks-scroll-three/cutouts/" + id + ".png";
-        image.decode().then(() => {
-          if (!preview.isConnected) return;
-          const scale = Math.min(1, 640 / Math.max(image.naturalWidth, image.naturalHeight));
-          preview.width = Math.max(1, Math.round(image.naturalWidth * scale));
-          preview.height = Math.max(1, Math.round(image.naturalHeight * scale));
-          previewContext.drawImage(image, 0, 0, preview.width, preview.height);
-          sizePreview();
-          softenEdges(previewContext);
-        }, () => { /* The atlas cutout is already displayed. */ });
-      }
-    }
-
     function updateHover() {
-      let node, x, y;
+      let node;
       if (pointer && view) {
         const bounds = viewport.getBoundingClientRect();
-        x = pointer.x - bounds.left;
-        y = pointer.y - bounds.top;
+        const x = pointer.x - bounds.left;
+        const y = pointer.y - bounds.top;
         const mapX = (x - view.mapX) / view.scale;
         const mapY = (y - view.mapY) / view.scale;
         node = nodes.findLast(node => node.arrival <= view.time &&
@@ -317,7 +249,6 @@
       }
       if (hovered === node) return false;
       hovered = node;
-      if (node) showPreview(node, x, y);
       return true;
     }
 
