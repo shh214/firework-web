@@ -246,12 +246,6 @@
     }
     return {
       resize,
-      drawCutout(context, index) {
-        const { x, y, width, height } = frames[index];
-        context.canvas.width = width;
-        context.canvas.height = height;
-        context.drawImage(atlasImage, x, y, width, height, 0, 0, width, height);
-      },
       draw(frame, order, morph = 0) {
         lastFrame = frame;
         lastOrder = order;
