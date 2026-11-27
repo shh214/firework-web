@@ -1,46 +1,58 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#000000">
   <link rel="icon" href="data:,">
-  <title>美国独立日烟花 · 球体、城市矩阵与烟花色带</title>
+  <title>Fourth of July Fireworks</title>
   <link rel="stylesheet" href="../us-fireworks-scroll/style.css">
   <script defer src="../us-fireworks-cloud/cloud-data.js"></script>
   <script defer src="../us-fireworks-sphere/sphere-data.js"></script>
   <script defer src="../us-fireworks-sphere/layout.js"></script>
-  <link rel="stylesheet" href="style.css?v=boston-river-hover">
+  <link rel="stylesheet" href="style.css?v=triggered-city-arrival">
   <script defer src="circle-layout.js"></script>
   <script defer src="../us-fireworks-scroll/matrix-layout.js"></script>
   <script defer src="../us-fireworks-scroll/vendor/gsap.min.js"></script>
-  <script defer src="../us-fireworks-scroll/vendor/ScrollTrigger.min.js"></script>
   <script defer src="assets/boston-water.js"></script>
-  <script defer src="boston-river.js?v=boston-river-hover"></script>
-  <script defer src="renderer.js?v=boston-river-hover"></script>
-  <script defer src="story.js?v=boston-river-hover"></script>
+  <script defer src="boston-river.js?v=shared-insets"></script>
+  <script defer src="renderer.js?v=color-explanation"></script>
+  <script defer src="city-layout.js?v=shared-insets"></script>
+  <script defer src="color-explanation.js?v=triggered-city-arrival"></script>
+  <script defer src="story.js?v=sequential-city-arrival"></script>
 </head>
 <body>
   <main>
     <div id="story-track">
       <div id="scene">
-        <canvas id="cloud" tabindex="0" class="rotatable" role="img" aria-label="美国独立日烟花照片云。拖动旋转球体。向下滚动，照片进入各自的城市矩阵，再变为按城市聚集的烟花色圆。选择城市可进入第四幕，向上滚动可逐幕返回。"></canvas>
-        <svg id="cities" role="group" aria-label="矩阵所属城市" aria-hidden="true"></svg>
+        <canvas id="cloud" tabindex="0" class="rotatable" role="img" aria-label="A globe of Fourth of July fireworks photographs. Drag to rotate. Scroll down to explore the city groups, seven fireworks colors, and city color bands. Select a city to enter Act IV. Scroll up to go back."></canvas>
+        <svg id="cities" role="group" aria-label="Cities in the photo grid" aria-hidden="true"></svg>
+        <section id="color-explanation" aria-label="The colors of fireworks">
+          <h2 class="color-question" aria-hidden="true">Why do fireworks have different colors?</h2>
+          <div class="color-gallery" aria-hidden="true"></div>
+          <div class="color-captions">
+            <p class="color-summary" aria-hidden="true">Seven fireworks colors</p>
+            <p class="color-point-caption" aria-hidden="true">One dot for each color</p>
+          </div>
+        </section>
         <svg id="axis" aria-hidden="true"></svg>
-        <div id="city-entries" role="group" aria-label="选择城市进入第四幕" hidden></div>
-        <p id="failure" role="alert" hidden>未能载入照片，请重新打开页面。</p>
-        <noscript>请启用 JavaScript 查看照片转场。</noscript>
+        <div id="city-entries" role="group" aria-label="Select a city to enter Act IV" hidden></div>
+        <p id="failure" role="alert" hidden>The photos could not load. Please reload this page.</p>
+        <noscript>Enable JavaScript to view the photo transitions.</noscript>
       </div>
-      <div id="story-runway" aria-hidden="true"></div>
+      <div id="story-runway" aria-hidden="true">
+        <div id="matrix-runway"></div>
+        <div id="color-runway"></div>
+      </div>
       <div id="third-act-hold" aria-hidden="true"></div>
     </div>
     <section id="next-act" aria-labelledby="next-act-title" hidden>
-      <h2 id="next-act-title" tabindex="-1">第四幕</h2>
+      <h2 id="next-act-title" tabindex="-1">Act IV</h2>
       <div id="boston-river" hidden>
         <div class="boston-river-viewport">
           <div class="boston-river-map">
-            <img src="assets/boston-charles-river-black-white.svg" width="1486" height="858" decoding="async" alt="波士顿与剑桥之间的查尔斯河。波士顿烟花照片的色圆随滚动落入河道。">
+            <img src="assets/boston-charles-river-black-white.svg" width="1486" height="858" decoding="async" alt="The Charles River between Boston and Cambridge. As you scroll, colored dots from Boston fireworks photographs move into the river.">
             <svg class="boston-river-banks" viewBox="0 0 1486 858" aria-hidden="true">
               <path></path>
             </svg>

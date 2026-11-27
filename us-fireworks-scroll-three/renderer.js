@@ -41,9 +41,10 @@
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, width, height);
         const tintAlpha = morph * opacity;
-        const photoWeight = morph < 1 ? (1 - morph) / (1 - tintAlpha) : 0;
         for (let n = 0; n < order.length; n++) {
           const i = order[n], k = i * 6;
+          const alpha = frame[k+5];
+          if (alpha <= 0) continue;
           const w = frame[k+2], h = frame[k+3];
           const x = frame[k] - w / 2, y = frame[k+1] - h / 2;
           if (w <= 0 || h <= 0 || x >= width || y >= height || x + w <= 0 || y + h <= 0) continue;
@@ -51,23 +52,22 @@
           const sheet = side <= sheets[0].size ? sheets[0]
             : side <= sheets[1].size ? sheets[1] : sheets[sheets.length - 1];
           const rect = frames[i], r = sheet.ratio;
-          const light = frame[k+5];
           if (morph > 0) {
             ctx.save();
             ctx.beginPath();
             ctx.roundRect(x, y, w, h, Math.min(w, h) * morph / 2);
             ctx.clip();
             if (morph < 1) {
-              ctx.globalAlpha = light * photoWeight;
+              ctx.globalAlpha = alpha * (1 - morph) / (1 - alpha * tintAlpha);
               ctx.drawImage(sheet.image, rect.x*r, rect.y*r, rect.width*r, rect.height*r, x, y, w, h);
             }
-            ctx.globalAlpha = tintAlpha;
+            ctx.globalAlpha = alpha * tintAlpha;
             ctx.fillStyle = colors[i].color;
             ctx.fillRect(x, y, w, h);
             ctx.restore();
             continue;
           }
-          ctx.globalAlpha = light;
+          ctx.globalAlpha = alpha;
           ctx.drawImage(sheet.image, rect.x*r, rect.y*r, rect.width*r, rect.height*r, x, y, w, h);
         }
       },
@@ -78,20 +78,20 @@
     const vert = `#version 300 es
       layout(location=0) in vec4 aRect;
       layout(location=1) in vec4 aTexture;
-      layout(location=2) in float aLight;
+      layout(location=2) in float aAlpha;
       layout(location=3) in vec3 aTint;
       out vec3 tint;
       out vec2 local;
       flat out vec2 halfSize;
       uniform vec2 uView;
       out vec2 uv;
-      out float light;
+      out float alpha;
       void main() {
         vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
         vec2 xy = (aRect.xy + (corner - 0.5) * aRect.zw) / uView;
         gl_Position = vec4(xy.x * 2.0 - 1.0, 1.0 - xy.y * 2.0, 0.0, 1.0);
         uv = mix(aTexture.xy, aTexture.zw, corner);
-        light = aLight;
+        alpha = aAlpha;
         tint = aTint;
         halfSize = aRect.zw * .5;
         local = (corner - .5) * aRect.zw;
@@ -100,7 +100,7 @@
       precision highp float;
       uniform sampler2D uAtlas;
       in vec2 uv;
-      in float light;
+      in float alpha;
       in vec2 local;
       flat in vec2 halfSize;
       in vec3 tint;
@@ -108,13 +108,13 @@
       uniform float uOpacity;
       out vec4 color;
       void main() {
-        vec4 photo = texture(uAtlas, uv) * light;
+        vec4 photo = texture(uAtlas, uv);
         float radius = min(halfSize.x, halfSize.y) * uMorph;
         vec2 d = abs(local) - halfSize + radius;
         float distanceToEdge = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - radius;
         float aa = max(fwidth(distanceToEdge), .0001);
         float mask = uMorph == 0.0 ? 1.0 : clamp(.5 - distanceToEdge / aa, 0.0, 1.0);
-        color = mask * mix(photo, vec4(tint * uOpacity, uOpacity), uMorph);
+        color = alpha * mask * mix(photo, vec4(tint * uOpacity, uOpacity), uMorph);
       }`;
     const program = gl.createProgram();
     for (const [type, source] of [[gl.VERTEX_SHADER, vert], [gl.FRAGMENT_SHADER, frag]]) {

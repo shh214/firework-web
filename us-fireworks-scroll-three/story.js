@@ -4,10 +4,10 @@
   const stage = document.getElementById("scene");
   const canvas = document.getElementById("cloud");
   const names = document.getElementById("cities");
-  const matrix = window.FIREWORK_MATRIX;
   const sphere = window.FIREWORK_SPHERE;
   const cloud = window.FIREWORK_CLOUD;
   const compactness = 1.29, photoSize = 0.81;
+  const cityPlacementEnd = .60;
   const clamp01 = n => Math.max(0, Math.min(1, n));
   function smooth(n) {
     const t = clamp01(n);
@@ -29,6 +29,8 @@
   }
 
   async function start() {
+    const originalCircles = window.FIREWORK_CIRCLES;
+    const { matrix, bubbles } = window.createFireworkCityLayout(window.FIREWORK_MATRIX, originalCircles);
     if (cloud.photos.length !== sphere.ids.length || cloud.photos.length !== matrix.rects.length ||
         cloud.photos.some((photo, i) => photo.id !== sphere.ids[i] || photo.id !== matrix.photoIds[i])) {
       throw new Error("Photo IDs do not match the sphere and matrix layouts.");
@@ -36,7 +38,8 @@
     const atlas = new Image();
     atlas.src = "fireworks-atlas.webp?v=058e6a85";
     await atlas.decode();
-    const bubbles = window.FIREWORK_CIRCLES;
+    const matrixInset = matrix.sideInset ?? 0;
+    const sideMarginRatio = 2 * matrixInset / matrix.width;
     const photoIndex = new Map(matrix.photoIds.map((id, i) => [id, i]));
     const circles = new Array(matrix.photoIds.length);
     const circleOrder = bubbles.circles.map(([id, city, x, y, radius, family]) => {
@@ -45,7 +48,7 @@
           matrix.labels[matrix.groups[i]].text !== bubbles.cities[city][0]) {
         throw new Error("Circle and matrix records disagree for photo " + id);
       }
-      circles[i] = { x, y, radius, color: bubbles.palette[family] };
+      circles[i] = { x, y, radius, family, color: bubbles.palette[family] };
       return i;
     });
     if (circleOrder.length !== circles.length) throw new Error("Incomplete circle layout");
@@ -68,16 +71,26 @@
     const endFrame = new Float32Array(count * 6);
     const axis = document.getElementById("axis");
     const entries = document.getElementById("city-entries");
-    const storyRunway = document.getElementById("story-runway");
+    const matrixRunway = document.getElementById("matrix-runway");
+    const colorRunway = document.getElementById("color-runway");
     const nextAct = document.getElementById("next-act");
     const nextActTitle = document.getElementById("next-act-title");
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-    const bostonCity = bubbles.cities.findIndex(([name]) => name === "Boston");
+    const colorExplanation = window.createColorExplanation(
+      document.getElementById("color-explanation"), circles, photoIndex, smooth, reducedMotion, requestDraw,
+    );
+    const explanationIndices = new Set(colorExplanation.slots.map(({ index }) => index));
+    const explanationOrder = circleOrder.filter(index => explanationIndices.has(index));
+    const remainingCircles = circleOrder.filter(index => !explanationIndices.has(index));
+    // The river depicts Boston itself. Use only photos originally taken there,
+    // starting from their positions in the third act.
+    const bostonCity = originalCircles.cities.findIndex(([name]) => name === "Boston");
+    const bostonPhotos = new Set(originalCircles.circles.filter(([, city]) => city === bostonCity).map(([id]) => id));
     const bostonRiver = window.createBostonRiver(
       document.getElementById("boston-river"),
-      bubbles.circles.filter(([, city]) => city === bostonCity),
+      bubbles.circles.filter(([id]) => bostonPhotos.has(id)),
       bubbles.palette,
-      bubbles.viewport,
+      projectCircleField,
     );
     let enteredNextAct = false;
     const cityButtons = bubbles.cities.map(([name]) => {
@@ -89,7 +102,7 @@
         nextAct.dataset.city = name;
         bostonRiver.setVisible(name === "Boston");
         nextAct.hidden = false;
-        nextActTitle.textContent = "第四幕 · " + name;
+        nextActTitle.textContent = "Act IV · " + name;
         nextActTitle.focus({ preventScroll: true });
         window.scrollTo({ top: nextAct.offsetTop, behavior: reducedMotion.matches ? "instant" : "smooth" });
         requestDraw();
@@ -103,30 +116,43 @@
       axis.append(el);
       return el;
     }
+    const firstAnchor = bubbles.cities[0][1];
+    const anchorStep = bubbles.cities[1][1] - firstAnchor;
+    const fieldStart = firstAnchor - anchorStep / 2;
+
+    function projectCircleField(viewWidth, viewHeight) {
+      const margin = viewWidth * sideMarginRatio;
+      const columnWidth = (viewWidth - 2 * margin) / bubbles.cities.length;
+      const horizontalScale = columnWidth / anchorStep;
+      const scale = Math.min(horizontalScale, viewHeight / bubbles.viewport[1]);
+      const top = (viewHeight - bubbles.viewport[1] * scale) / 2;
+      return {
+        margin, columnWidth, scale,
+        x: anchor => margin + (anchor - fieldStart) * horizontalScale,
+        y: anchor => top + anchor * scale,
+      };
+    }
+
     function fitCircles() {
-      const [vw, vh] = bubbles.viewport;
-      const scale = Math.min(width / vw, height / vh);
-      const left = (width - vw * scale) / 2;
-      const top = (height - vh * scale) / 2;
+      const field = projectCircleField(width, height);
+      const { margin, columnWidth, scale } = field;
       circles.forEach(({x, y, radius}, i) => {
         const k = i * 6;
-        endFrame[k] = left + x * scale;
-        endFrame[k+1] = top + y * scale;
-        endFrame[k+2] = endFrame[k+3] = 2 * radius * scale;
+        const r = radius * scale;
+        endFrame[k] = Math.max(margin + r, Math.min(width - margin - r, field.x(x)));
+        endFrame[k+1] = field.y(y);
+        endFrame[k+2] = endFrame[k+3] = 2 * r;
         endFrame[k+5] = 1;
       });
       axis.replaceChildren();
-      const ticks = bubbles.cities.map(([, x]) => left + x * scale);
+      const ticks = bubbles.cities.map(([, x]) => field.x(x));
       const y = bubbles.axisY * scale;
       entries.style.top = y + "px";
-      let columnLeft = 0;
       axisElement("line", {x1:ticks[0], x2:ticks.at(-1), y1:y, y2:y, stroke:"#858580", "stroke-width":Math.max(.6,.75*scale)});
       bubbles.cities.forEach(([name], i) => {
-        const columnRight = i + 1 < ticks.length ? (ticks[i] + ticks[i+1]) / 2 : width;
-        cityButtons[i].style.left = columnLeft + "px";
-        cityButtons[i].style.width = (columnRight - columnLeft) + "px";
-        columnLeft = columnRight;
-        const x = ticks[i], small = scale < .55, labelY = y + 13*scale;
+        cityButtons[i].style.left = (margin + i * columnWidth) + "px";
+        cityButtons[i].style.width = columnWidth + "px";
+        const x = ticks[i], small = columnWidth < 80, labelY = y + 13*scale;
         axisElement("line", {x1:x, x2:x, y1:y, y2:y+7*scale, stroke:"#a6a59f", "stroke-width":Math.max(.6,.75*scale)});
         const label = axisElement("text", {x, y:labelY, fill:"#dededa", "font-size":Math.max(10,15.7*scale),
           "text-anchor":small ? "start":"middle", "dominant-baseline":"hanging"});
@@ -136,8 +162,8 @@
     }
     const meter = document.createElement("canvas").getContext("2d");
     const orientation = [1,0,0, 0,1,0, 0,0,1];
-    const playhead = { value: 0 };
-    let width, height, sourceCenters, targetCenters, requested = false;
+    let width, height;
+    let sourceCenters, targetCenters, requested = false;
 
     function projectSphere() {
       const view = sphere.view;
@@ -159,8 +185,10 @@
     }
 
     function fitMatrix() {
-      const scale = Math.min(width / matrix.width, height / matrix.height);
-      const left = (width - matrix.width * scale) / 2;
+      const margin = width * sideMarginRatio;
+      const contentWidth = matrix.width - 2 * matrixInset;
+      const scale = Math.min((width - 2 * margin) / contentWidth, height / matrix.height);
+      const left = margin - matrixInset * scale;
       const top = (height - matrix.height * scale) / 2;
       for (let i = 0; i < count; i++) {
         const [cx, cy, w, h] = matrix.rects[i], k = i * 6;
@@ -192,38 +220,65 @@
       });
     }
 
+    function drawColorCircles(placement, reveal, pointOpacity) {
+      if (reveal === 1 && pointOpacity === 1) {
+        renderer.draw(endFrame, circleOrder, 1);
+        return;
+      }
+      frame.set(endFrame);
+      if (reveal > 0) {
+        for (const index of remainingCircles) frame[index * 6 + 5] = reveal * pointOpacity;
+      }
+
+      // In reduced motion the seven circles fade between stationary positions.
+      const travel = reducedMotion.matches ? Number(placement >= .5) : smooth(placement);
+      const opacity = reducedMotion.matches ? pointOpacity * smooth(Math.abs(2 * placement - 1)) : pointOpacity;
+      for (const { index, x, y, diameter } of colorExplanation.slots) {
+        const k = index * 6;
+        frame[k] = x + (endFrame[k] - x) * travel;
+        frame[k+1] = y + (endFrame[k+1] - y) * travel;
+        frame[k+2] = frame[k+3] = diameter + (endFrame[k+2] - diameter) * travel;
+        frame[k+5] = opacity;
+      }
+      renderer.draw(frame, reveal === 0 ? explanationOrder : circleOrder, 1);
+    }
+
     function draw() {
       requested = false;
       const nextTop = nextAct.hidden ? Infinity : nextAct.getBoundingClientRect().top;
       bostonRiver.draw(nextTop);
-      const runwayLength = storyRunway.offsetHeight;
-      const runway = Math.max(1, (runwayLength - height*.24) / 2);
-      const distance = playhead.value * runwayLength;
-      const t = clamp01(distance / runway);
-      const u = clamp01((distance - runway - height*.24) / runway);
-      names.style.opacity = String(smooth((t - .79) / .20) * (1 - smooth(u / .27)));
-      names.setAttribute("aria-hidden", String(t <= .79 || u >= .27));
-      axis.style.opacity = String(smooth((u-.48)/.44));
-      entries.hidden = u < .98 || nextTop <= 1;
+      const { matrixTravel: t, matrixOpacity, pointOpacity, cityArrival } = colorExplanation.readFrame();
+      const placement = clamp01(cityArrival / cityPlacementEnd);
+      const reveal = smooth((cityArrival - cityPlacementEnd) / (1 - cityPlacementEnd));
+      const namesOpacity = smooth((t - .79) / .20) * matrixOpacity;
+      names.style.opacity = String(namesOpacity);
+      names.setAttribute("aria-hidden", String(namesOpacity === 0));
+      axis.style.opacity = String(reveal);
+      entries.hidden = !colorExplanation.scroll.atCities || cityArrival < 1 || nextTop <= 1;
       if (nextTop <= 0) return;
-      canvas.classList.toggle("rotatable", t === 0);
-      if (u > 0) {
-        const travel = smooth(u);
-        for (let i = 0; i < count; i++) {
-          const k = i * 6;
-          for (let j = 0; j < 4; j++) frame[k+j] = target[k+j] + (endFrame[k+j] - target[k+j]) * travel;
-          frame[k+5] = 1;
+      canvas.classList.toggle("rotatable", colorExplanation.atSphere);
+      if (t === 1) {
+        if (matrixOpacity > 0) {
+          if (matrixOpacity === 1) renderer.draw(target, order);
+          else {
+            frame.set(target);
+            for (let i = 0; i < count; i++) frame[i * 6 + 5] = matrixOpacity;
+            renderer.draw(frame, order);
+          }
+        } else if (pointOpacity > 0) {
+          drawColorCircles(placement, reveal, pointOpacity);
+        } else {
+          renderer.draw(target, []);
         }
-        renderer.draw(frame, circleOrder, smooth((u-.08)/.86));
         return;
       }
-      if (t === 0 || t === 1) {
-        renderer.draw(t === 0 ? source : target, order);
+      if (t === 0) {
+        renderer.draw(source, order);
       } else {
         const travel = smooth(t / 0.88);
         for (let i = 0; i < count; i++) {
           const k = i * 6, city = matrix.groups[i];
-          // Movement depends only on scroll position and the last orientation.
+          // Animate from the last sphere orientation into the city cells.
           // A city's center travels first, then its members settle into cells.
           const delay = 0.055 + 0.035 * (1 - source[k+4]);
           const place = reducedMotion.matches ? smooth(t) : smooth((t - delay) / (1 - delay));
@@ -234,7 +289,7 @@
           frame[k+2] = source[k+2] + (target[k+2] - source[k+2]) * place;
           frame[k+3] = source[k+3] + (target[k+3] - source[k+3]) * place;
           frame[k+4] = source[k+4] * (1 - travel);
-          frame[k+5] = source[k+5] + (1 - source[k+5]) * place;
+          frame[k+5] = source[k+5] + (matrixOpacity - source[k+5]) * place;
         }
         renderer.draw(frame, order);
       }
@@ -260,9 +315,12 @@
       width = stage.clientWidth;
       height = stage.clientHeight;
       if (!width || !height) return;
+      const matrixLength = matrixRunway.offsetHeight;
       renderer.resize(width, height, Math.min(devicePixelRatio || 1, 2));
       fitMatrix();
       fitCircles();
+      colorExplanation.resize(width, height);
+      colorExplanation.scroll.resize(matrixLength, matrixLength + colorRunway.offsetHeight);
       projectSphere();
       requestDraw();
     }
@@ -279,7 +337,7 @@
       projectSphere();
       requestDraw();
     }
-    const atSphere = () => playhead.value === 0 && window.scrollY <= 0;
+    const atSphere = () => colorExplanation.atSphere && window.scrollY <= 0;
     let drag = null;
     canvas.addEventListener("pointerdown", e => {
       if (!atSphere() || !e.isPrimary || e.button !== 0) return;
@@ -313,15 +371,9 @@
 
     resize();
     new ResizeObserver(resize).observe(stage);
+    reducedMotion.addEventListener("change", requestDraw);
     window.addEventListener("scroll", updateNextAct, { passive: true });
     window.addEventListener("scrollend", updateNextAct);
-    gsap.registerPlugin(ScrollTrigger);
-    gsap.to(playhead, {
-      value: 1,
-      ease: "none",
-      onUpdate: requestDraw,
-      scrollTrigger: { start: 0, end: () => storyRunway.offsetHeight, scrub: reducedMotion.matches ? true : 0.16 },
-    });
   }
   start().catch(error => {
     console.error(error);

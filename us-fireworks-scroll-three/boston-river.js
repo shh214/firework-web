@@ -124,7 +124,7 @@
     return nodes;
   }
 
-  window.createBostonRiver = (section, records, palette, sourceViewport) => {
+  window.createBostonRiver = (section, records, palette, projectCircleField) => {
     const viewport = section.querySelector(".boston-river-viewport");
     const mapFrame = viewport.querySelector(".boston-river-map");
     const map = mapFrame.querySelector("img");
@@ -194,17 +194,15 @@
       const mapX = mapBounds.left - viewportBounds.left;
       const mapY = mapBounds.top - viewportBounds.top;
       const scale = mapBounds.width / mapWidth;
-      const originalScale = Math.min(width / sourceViewport[0], height / sourceViewport[1]);
-      const originalLeft = (width - sourceViewport[0] * originalScale) / 2;
-      const originalTop = (height - sourceViewport[1] * originalScale) / 2;
+      const source = projectCircleField(width, height);
       const time = playhead.flight;
-      view = { width, height, ratio, mapX, mapY, scale, originalScale, originalLeft, originalTop, time };
+      view = { width, height, ratio, mapX, mapY, scale, source, time };
       updateHover();
       renderCircles();
     }
 
     function renderCircles() {
-      const { width, height, ratio, mapX, mapY, scale, originalScale, originalLeft, originalTop, time } = view;
+      const { width, height, ratio, mapX, mapY, scale, source, time } = view;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, width, height);
       context.translate(mapX, mapY);
@@ -227,9 +225,9 @@
         const node = nodes[i];
         const travel = 1 - (node.arrival - time) / fallDuration;
         if (travel <= 0) break;
-        const sourceX = (originalLeft + node.source.x * originalScale - mapX) / scale;
+        const sourceX = (source.x(node.source.x) - mapX) / scale;
         // The old field has moved one viewport up when the river is pinned.
-        const sourceY = (originalTop + node.source.y * originalScale - height - mapY) / scale;
+        const sourceY = (source.y(node.source.y) - height - mapY) / scale;
         const x = mix(sourceX, node.x, smooth(travel));
         const y = mix(sourceY, node.y, travel ** 1.25);
         paint(node, x, y, dimOpacity * clamp(travel * 5));

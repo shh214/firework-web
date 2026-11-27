@@ -7,13 +7,100 @@
   height: 100vh;
   height: 100dvh;
 }
-#story-runway {
-  height: calc(2 * clamp(1100px, 210vh, 2200px) + 24vh);
-  height: calc(2 * clamp(1100px, 210svh, 2200px) + 24svh);
+#matrix-runway {
+  height: clamp(1100px, 210vh, 2200px);
+  height: clamp(1100px, 210svh, 2200px);
+}
+#color-runway {
+  height: clamp(2300px, 350vh, 3800px);
+  height: clamp(2300px, 350svh, 3800px);
 }
 #third-act-hold {
   height: clamp(420px, 65vh, 760px);
   height: clamp(420px, 65svh, 760px);
+}
+#color-explanation {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  color: #f7f7f5;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  text-align: center;
+}
+.color-question {
+  position: absolute;
+  inset: 50% 5% auto;
+  transform: translateY(-50%);
+  margin: 0;
+  opacity: 0;
+  font-size: clamp(21px, 2.6vw, 39px);
+  font-weight: 400;
+  font-style: italic;
+  transition: opacity 550ms ease-in-out;
+}
+#color-explanation[data-mode="question"] .color-question {
+  opacity: 1;
+}
+.color-gallery {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 320ms ease-in-out;
+}
+#color-explanation:is([data-mode="explain"], [data-mode="together"], [data-mode="points"]) .color-gallery {
+  opacity: 1;
+}
+.color-slot {
+  position: absolute;
+}
+.color-burst {
+  position: absolute;
+  width: var(--burst-size);
+  aspect-ratio: 1;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--burst-scale, 1));
+  opacity: .19;
+  transition: opacity 320ms ease-in-out;
+}
+.color-burst.is-lit {
+  opacity: 1;
+}
+.color-burst img {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  height: auto;
+  opacity: var(--burst-visibility, 1);
+}
+.color-captions {
+  position: absolute;
+  inset: auto 5% max(11%, 1.75rem);
+  display: grid;
+  justify-items: center;
+  font-size: clamp(13px, 1.13vw, 18px);
+  line-height: 1.55;
+}
+.color-captions p {
+  grid-area: 1 / 1;
+  margin: 0;
+  opacity: 0;
+}
+.color-caption, .color-summary, .color-point-caption {
+  transition: opacity 360ms ease-in-out;
+}
+.color-caption.is-selected,
+#color-explanation[data-mode="together"] .color-summary,
+#color-explanation[data-mode="points"] .color-point-caption {
+  opacity: 1;
+}
+.color-summary, .color-point-caption {
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .color-question, .color-gallery, .color-burst,
+  .color-caption, .color-summary, .color-point-caption {
+    transition-duration: 120ms;
+  }
 }
 #axis {
   position: absolute;
