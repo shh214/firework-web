@@ -8,6 +8,7 @@
   const cloud = window.FIREWORK_CLOUD;
   const compactness = 1.29, photoSize = 0.81;
   const cityPlacementEnd = .60;
+  const readingTime = 500;
   const clamp01 = n => Math.max(0, Math.min(1, n));
   function smooth(n) {
     const t = clamp01(n);
@@ -48,7 +49,7 @@
           matrix.labels[matrix.groups[i]].text !== bubbles.cities[city][0]) {
         throw new Error("Circle and matrix records disagree for photo " + id);
       }
-      circles[i] = { x, y, radius, family, color: bubbles.palette[family] };
+      circles[i] = { city, x, y, radius, family, color: bubbles.palette[family] };
       return i;
     });
     if (circleOrder.length !== circles.length) throw new Error("Incomplete circle layout");
@@ -69,15 +70,22 @@
       return node;
     });
     const endFrame = new Float32Array(count * 6);
+    const fireworkPositions = new Float32Array(count * 2);
+    const circlesByCity = bubbles.cities.map(() => []);
+    for (const index of circleOrder) circlesByCity[circles[index].city].push(index);
     const axis = document.getElementById("axis");
+    const axisTicks = axis.querySelector(".city-axis-ticks");
     const entries = document.getElementById("city-entries");
     const matrixRunway = document.getElementById("matrix-runway");
     const colorRunway = document.getElementById("color-runway");
+    const cityHold = document.getElementById("third-act-hold");
     const nextAct = document.getElementById("next-act");
     const nextActTitle = document.getElementById("next-act-title");
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
     const colorExplanation = window.createColorExplanation(
       document.getElementById("color-explanation"), circles, photoIndex, smooth, reducedMotion, requestDraw,
+      { handlesScroll: handlesCityScroll, canAdvance: canAdvanceCity, advance: advanceCity, syncScroll: syncCityScroll },
+      readingTime,
     );
     const explanationIndices = new Set(colorExplanation.slots.map(({ index }) => index));
     const explanationOrder = circleOrder.filter(index => explanationIndices.has(index));
@@ -92,33 +100,190 @@
       bubbles.palette,
       projectCircleField,
     );
-    let enteredNextAct = false;
-    const cityButtons = bubbles.cities.map(([name]) => {
+    const cityMotion = { focus: 0, firework: 0 };
+    let selectedCity = -1, cityStep = "columns";
+    let cityStart, cityOffset, axisHeight;
+    let pageTween, cityReadyAt = Infinity;
+    const axisButtons = bubbles.cities.map(([name], index) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "city-entry";
-      button.setAttribute("aria-label", name);
-      button.addEventListener("click", () => {
-        nextAct.dataset.city = name;
-        bostonRiver.setVisible(name === "Boston");
-        nextAct.hidden = false;
-        nextActTitle.textContent = "Act IV · " + name;
-        nextActTitle.focus({ preventScroll: true });
-        window.scrollTo({ top: nextAct.offsetTop, behavior: reducedMotion.matches ? "instant" : "smooth" });
-        requestDraw();
-      });
-      entries.append(button);
+      button.className = "city-axis-city";
+      const label = document.createElement("span");
+      label.textContent = name;
+      button.append(label);
+      button.addEventListener("click", () => selectCity(index));
+      axis.append(button);
       return button;
+    });
+    const cityColumns = bubbles.cities.map((_, index) => {
+      const column = document.createElement("div");
+      column.className = "city-entry";
+      column.addEventListener("click", () => selectCity(index));
+      entries.append(column);
+      return column;
     });
     function axisElement(tag, attrs) {
       const el = document.createElementNS(names.namespaceURI, tag);
       for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
-      axis.append(el);
+      axisTicks.append(el);
       return el;
     }
     const firstAnchor = bubbles.cities[0][1];
     const anchorStep = bubbles.cities[1][1] - firstAnchor;
     const fieldStart = firstAnchor - anchorStep / 2;
+
+    function showAxisSelection() {
+      axis.querySelector("[aria-current]")?.removeAttribute("aria-current");
+      axis.toggleAttribute("data-selected", selectedCity >= 0);
+      axisButtons[selectedCity]?.setAttribute("aria-current", "true");
+    }
+
+    function fitFirework() {
+      const { x } = projectCircleField(width, height);
+      window.layoutCityFirework(circlesByCity[selectedCity], endFrame, fireworkPositions,
+        x(bubbles.cities[selectedCity][1]), width, height, axisHeight);
+    }
+
+    function selectCity(index) {
+      if (axis.inert || index === selectedCity && cityStep !== "clearing") return;
+      if (selectedCity < 0) cityOffset = window.scrollY - cityStart;
+      pageTween?.kill();
+      pageTween = null;
+      gsap.killTweensOf(cityMotion);
+      selectedCity = index;
+      cityStep = "columns";
+      cityMotion.firework = 0;
+      cityReadyAt = Infinity;
+      if (!nextAct.hidden) {
+        hideNextAct();
+        scrollPage(cityScrollTop());
+      }
+      fitFirework();
+      showAxisSelection();
+      if (!axis.contains(document.activeElement)) axis.focus({ preventScroll: true });
+      if (cityMotion.focus < 1) {
+        const duration = reducedMotion.matches ? 0 : .34;
+        gsap.to(cityMotion, { focus: 1, duration, ease: "power1.out", onUpdate: requestDraw });
+      }
+      requestDraw();
+    }
+
+    const cityScrollTop = () => cityStart + Math.max(1, Math.min(cityHold.offsetHeight, cityOffset));
+    const scrollPage = top => window.scrollTo({ top, behavior: "instant" });
+
+    function playFirework(formed) {
+      cityStep = formed ? "firework" : "columns";
+      cityReadyAt = Infinity;
+      const duration = reducedMotion.matches ? 0 : formed ? 1.1 : .75;
+      gsap.killTweensOf(cityMotion, "firework");
+      gsap.to(cityMotion, { firework: Number(formed), duration, ease: "power2.inOut", onUpdate: requestDraw });
+      requestDraw();
+    }
+
+    function clearCity() {
+      cityStep = "clearing";
+      gsap.killTweensOf(cityMotion);
+      gsap.to(cityMotion, {
+        focus: 0, firework: 0, duration: reducedMotion.matches ? 0 : .30, ease: "power1.out", onUpdate: requestDraw,
+        onComplete() {
+          const button = axisButtons[selectedCity];
+          entries.hidden = false;
+          if (document.activeElement === axis) button.focus({ preventScroll: true });
+          selectedCity = -1;
+          cityStep = "columns";
+          showAxisSelection();
+          requestDraw();
+        },
+      });
+    }
+
+    function showNextActCity() {
+      const name = bubbles.cities[selectedCity][0];
+      nextAct.dataset.city = name;
+      nextActTitle.textContent = "Act IV · " + name;
+      bostonRiver.setVisible(name === "Boston");
+    }
+
+    function hideNextAct() {
+      nextAct.hidden = true;
+      bostonRiver.setVisible(false);
+    }
+
+    function moveBetweenActs(enter) {
+      cityReadyAt = Infinity;
+      if (enter) {
+        cityStep = "later";
+        showNextActCity();
+        nextAct.hidden = false;
+      }
+      const destination = enter ? () => nextAct.offsetTop : cityScrollTop;
+      function finish() {
+        pageTween = null;
+        if (enter) {
+          nextActTitle.focus({ preventScroll: true });
+        } else {
+          cityStep = "firework";
+          hideNextAct();
+          axis.focus({ preventScroll: true });
+        }
+        requestDraw();
+      }
+      if (reducedMotion.matches) {
+        scrollPage(destination());
+        finish();
+        return;
+      }
+      const from = window.scrollY;
+      const travel = { value: 0 };
+      pageTween = gsap.to(travel, {
+        value: 1, duration: .75, ease: "power2.inOut",
+        onUpdate: () => scrollPage(from + (destination() - from) * travel.value),
+        onComplete: finish,
+      });
+    }
+
+    function handlesCityScroll(direction) {
+      if (selectedCity < 0) return false;
+      return !!pageTween || cityStep !== "later"
+        || (direction < 0 ? window.scrollY <= nextAct.offsetTop + 1 : !canAdvanceCity(1));
+    }
+
+    function canAdvanceCity(direction) {
+      return !pageTween && cityStep !== "clearing" && (direction < 0 || performance.now() >= cityReadyAt);
+    }
+
+    function advanceCity(direction) {
+      if (!canAdvanceCity(direction)) return;
+      if (cityStep === "later") {
+        if (direction < 0) moveBetweenActs(false);
+      } else if (cityStep === "columns") {
+        if (direction > 0) playFirework(true);
+        else if (cityMotion.firework === 0) clearCity();
+      } else if (direction < 0) playFirework(false);
+      else moveBetweenActs(true);
+    }
+
+    function syncCityScroll() {
+      if (selectedCity < 0) return false;
+      requestDraw();
+      if (pageTween) return true;
+      const top = cityStep === "later" ? nextAct.offsetTop : cityScrollTop();
+      const delta = window.scrollY - top;
+      if (Math.abs(delta) > 1 && (cityStep !== "later" || delta < 0 || !canAdvanceCity(1))) {
+        // Also handle native scroll that arrives without a cancelable gesture.
+        scrollPage(top);
+        advanceCity(Math.sign(delta));
+      }
+      return true;
+    }
+
+    function startCityReadingWhenShown() {
+      if (selectedCity < 0 || cityReadyAt !== Infinity || pageTween) return;
+      if (cityStep === "later" || cityStep === "columns" && cityMotion.focus === 1 && cityMotion.firework === 0
+          || cityStep === "firework" && cityMotion.firework === 1) {
+        cityReadyAt = performance.now() + readingTime;
+      }
+    }
 
     function projectCircleField(viewWidth, viewHeight) {
       const margin = viewWidth * sideMarginRatio;
@@ -144,36 +309,45 @@
         endFrame[k+2] = endFrame[k+3] = 2 * r;
         endFrame[k+5] = 1;
       });
-      axis.replaceChildren();
+      axisTicks.replaceChildren();
       const ticks = bubbles.cities.map(([, x]) => field.x(x));
       const y = bubbles.axisY * scale;
-      entries.style.top = y + "px";
+      const labelY = y + 13 * scale;
+      const fontSize = Math.max(10, 15.7 * scale);
+      const small = columnWidth < 80;
+      axisHeight = Math.ceil(labelY + (small ? 86 : fontSize + 12));
+      axis.style.height = axisHeight + "px";
+      axis.style.fontSize = fontSize + "px";
+      axis.style.setProperty("--city-axis-top", y + "px");
+      axis.style.setProperty("--city-axis-label-offset", (labelY - y) + "px");
+      axis.toggleAttribute("data-narrow", small);
+      stage.style.setProperty("--city-axis-top", y + "px");
       axisElement("line", {x1:ticks[0], x2:ticks.at(-1), y1:y, y2:y, stroke:"#858580", "stroke-width":Math.max(.6,.75*scale)});
-      bubbles.cities.forEach(([name], i) => {
-        cityButtons[i].style.left = (margin + i * columnWidth) + "px";
-        cityButtons[i].style.width = columnWidth + "px";
-        const x = ticks[i], small = columnWidth < 80, labelY = y + 13*scale;
+      ticks.forEach((x, i) => {
+        for (const control of [axisButtons[i], cityColumns[i]]) {
+          control.style.left = (margin + i * columnWidth) + "px";
+          control.style.width = columnWidth + "px";
+        }
         axisElement("line", {x1:x, x2:x, y1:y, y2:y+7*scale, stroke:"#a6a59f", "stroke-width":Math.max(.6,.75*scale)});
-        const label = axisElement("text", {x, y:labelY, fill:"#dededa", "font-size":Math.max(10,15.7*scale),
-          "text-anchor":small ? "start":"middle", "dominant-baseline":"hanging"});
-        if (small) label.setAttribute("transform", "rotate(70 " + x + " " + labelY + ")");
-        label.textContent = name;
       });
+      if (selectedCity >= 0) fitFirework();
     }
     const meter = document.createElement("canvas").getContext("2d");
     const orientation = [1,0,0, 0,1,0, 0,0,1];
     let width, height;
     let sourceCenters, targetCenters, requested = false;
 
+    const explorer = window.createPhotoExplorer(canvas, cloud.photos, reducedMotion, requestDraw);
+    let railWidth;
     function projectSphere() {
       const view = sphere.view;
-      const scale = Math.min(height / view.referenceHeight, width * 0.87 / view.diameter);
+      const scale = Math.min(height / view.referenceHeight, (width - railWidth) * 0.87 / view.diameter);
       const plane = scale * view.diameter / view.span;
       for (let i = 0; i < count; i++) {
         const k = i * 6, tile = tiles[i];
         // Same projection, framing, shading and tuning as the chosen sphere.
         window.projectFireworkTile(tile, orientation, view, 1 / compactness);
-        source[k] = width / 2 + tile.gx * plane / tile.inverseP;
+        source[k] = (width + railWidth) / 2 + tile.gx * plane / tile.inverseP;
         source[k+1] = height / 2 + tile.gy * plane / tile.inverseP;
         source[k+2] = tile.side * scale * photoSize * tile.aspectX;
         source[k+3] = tile.side * scale * photoSize * tile.aspectY;
@@ -185,10 +359,12 @@
     }
 
     function fitMatrix() {
-      const margin = width * sideMarginRatio;
+      const viewWidth = width - railWidth;
+      const margin = viewWidth * sideMarginRatio;
       const contentWidth = matrix.width - 2 * matrixInset;
-      const scale = Math.min((width - 2 * margin) / contentWidth, height / matrix.height);
-      const left = margin - matrixInset * scale;
+      const scale = Math.min((viewWidth - 2 * margin) / contentWidth, height / matrix.height);
+      explorer.setGridPitch(matrix.columnPitch * scale, matrix.rowPitch * scale);
+      const left = railWidth + (viewWidth - matrix.width * scale) / 2;
       const top = (height - matrix.height * scale) / 2;
       for (let i = 0; i < count; i++) {
         const [cx, cy, w, h] = matrix.rects[i], k = i * 6;
@@ -243,21 +419,44 @@
       renderer.draw(frame, reveal === 0 ? explanationOrder : circleOrder, 1);
     }
 
+    function drawSelectedCity() {
+      const { focus, firework } = cityMotion;
+      frame.set(endFrame);
+      const backgroundOpacity = Math.max(0, 1 - .85 * focus - .15 * firework);
+      for (const index of circleOrder) {
+        if (circles[index].city !== selectedCity) frame[index * 6 + 5] = backgroundOpacity;
+      }
+      for (const index of circlesByCity[selectedCity]) {
+        const k = index * 6;
+        frame[k] += (fireworkPositions[index * 2] - frame[k]) * firework;
+        frame[k + 1] += (fireworkPositions[index * 2 + 1] - frame[k + 1]) * firework;
+      }
+      renderer.draw(frame, circleOrder, 1);
+    }
+
     function draw() {
       requested = false;
       const nextTop = nextAct.hidden ? Infinity : nextAct.getBoundingClientRect().top;
       bostonRiver.draw(nextTop);
+      startCityReadingWhenShown();
       const { matrixTravel: t, matrixOpacity, pointOpacity, cityArrival } = colorExplanation.readFrame();
       const placement = clamp01(cityArrival / cityPlacementEnd);
       const reveal = smooth((cityArrival - cityPlacementEnd) / (1 - cityPlacementEnd));
-      const namesOpacity = smooth((t - .79) / .20) * matrixOpacity;
+      explorer.setLayout(colorExplanation.atSphere ? source : colorExplanation.atMatrix ? target : null,
+        colorExplanation.inPhotoActs, colorExplanation.atMatrix);
+      const namesOpacity = (1 - explorer.progress) * smooth((t - .79) / .20) * matrixOpacity;
       names.style.opacity = String(namesOpacity);
       names.setAttribute("aria-hidden", String(namesOpacity === 0));
       axis.style.opacity = String(reveal);
-      entries.hidden = !colorExplanation.scroll.atCities || cityArrival < 1 || nextTop <= 1;
+      axis.inert = !colorExplanation.scroll.atCities || cityArrival < 1;
+      entries.hidden = selectedCity >= 0 || axis.inert;
       if (nextTop <= 0) return;
       canvas.classList.toggle("rotatable", colorExplanation.atSphere);
-      if (t === 1) {
+      if (explorer.active) {
+        explorer.draw(frame, order, renderer);
+      } else if (selectedCity >= 0) {
+        drawSelectedCity();
+      } else if (t === 1) {
         if (matrixOpacity > 0) {
           if (matrixOpacity === 1) renderer.draw(target, order);
           else {
@@ -270,9 +469,7 @@
         } else {
           renderer.draw(target, []);
         }
-        return;
-      }
-      if (t === 0) {
+      } else if (t === 0) {
         renderer.draw(source, order);
       } else {
         const travel = smooth(t / 0.88);
@@ -300,27 +497,22 @@
         requestAnimationFrame(draw);
       }
     }
-    function updateNextAct(event) {
-      if (nextAct.hidden) return;
-      if (nextAct.getBoundingClientRect().top < height - 1) {
-        enteredNextAct = true;
-      } else if (enteredNextAct || event.type === "scrollend") {
-        nextAct.hidden = true;
-        bostonRiver.setVisible(false);
-        enteredNextAct = false;
-      }
-      requestDraw();
-    }
     function resize() {
       width = stage.clientWidth;
       height = stage.clientHeight;
       if (!width || !height) return;
+      railWidth = explorer.resize(width, height);
       const matrixLength = matrixRunway.offsetHeight;
       renderer.resize(width, height, Math.min(devicePixelRatio || 1, 2));
       fitMatrix();
       fitCircles();
       colorExplanation.resize(width, height);
-      colorExplanation.scroll.resize(matrixLength, matrixLength + colorRunway.offsetHeight);
+      cityStart = matrixLength + colorRunway.offsetHeight;
+      if (selectedCity >= 0 && !pageTween) {
+        if (cityStep !== "later") scrollPage(cityScrollTop());
+        else if (window.scrollY < nextAct.offsetTop) scrollPage(nextAct.offsetTop);
+      }
+      colorExplanation.scroll.resize(matrixLength, cityStart);
       projectSphere();
       requestDraw();
     }
@@ -337,7 +529,7 @@
       projectSphere();
       requestDraw();
     }
-    const atSphere = () => colorExplanation.atSphere && window.scrollY <= 0;
+    const atSphere = () => !explorer.active && colorExplanation.atSphere && window.scrollY <= 0;
     let drag = null;
     canvas.addEventListener("pointerdown", e => {
       if (!atSphere() || !e.isPrimary || e.button !== 0) return;
@@ -372,8 +564,6 @@
     resize();
     new ResizeObserver(resize).observe(stage);
     reducedMotion.addEventListener("change", requestDraw);
-    window.addEventListener("scroll", updateNextAct, { passive: true });
-    window.addEventListener("scrollend", updateNextAct);
   }
   start().catch(error => {
     console.error(error);

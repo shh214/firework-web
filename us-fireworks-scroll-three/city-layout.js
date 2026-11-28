@@ -53,7 +53,7 @@
     return {
       matrix: {
         ...matrix, labels, groups, rects,
-        sideInset: margin,
+        sideInset: margin, columnPitch, rowPitch,
         width: widestRow + margin,
         height: top - rowGap + margin,
       },
@@ -120,5 +120,44 @@
       matrix: layout.matrix,
       bubbles: distributeCircles(bubbles, layout.matrix.labels, layout.assigned, removedCity),
     };
+  };
+
+  window.layoutCityFirework = (indices, frame, target, columnX, width, height, axisHeight) => {
+    const padding = 8;
+    const radius = Math.min(width * .195, height * .285, Math.max(0, height - axisHeight - 2 * padding) * .40);
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    // Use the same samples on resize and when returning to this city.
+    let seed = Math.imul(indices[0] + 1, 0x9e3779b1);
+    function random() {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 2 ** 32;
+    }
+    const phase = 2 * Math.PI * random();
+    let left = 0, right = 0, top = 0, bottom = 0;
+
+    indices.forEach((index, rank) => {
+      const angle = phase + rank * goldenAngle + (random() - .5) * .75;
+      // The product biases the dots toward the center with a gradual drop in density.
+      const spread = Math.sqrt(random() * (.08 + .92 * random()));
+      const contour = .91 + .065 * Math.sin(3 * angle + phase)
+        + .045 * Math.cos(5 * angle - phase) + .035 * Math.sin(8 * angle + phase);
+      const distance = spread * contour * radius;
+      const x = Math.cos(angle) * distance;
+      const y = (Math.sin(angle) * .96 + .065 * spread) * distance;
+      const dotRadius = frame[index * 6 + 2] / 2;
+      target[index * 2] = x;
+      target[index * 2 + 1] = y;
+      left = Math.min(left, x - dotRadius);
+      right = Math.max(right, x + dotRadius);
+      top = Math.min(top, y - dotRadius);
+      bottom = Math.max(bottom, y + dotRadius);
+    });
+
+    const centerX = Math.max(padding - left, Math.min(width - padding - right, columnX));
+    const centerY = Math.max(axisHeight + padding - top, Math.min(height - padding - bottom, height * .59));
+    for (const index of indices) {
+      target[index * 2] += centerX;
+      target[index * 2 + 1] += centerY;
+    }
   };
 })();
