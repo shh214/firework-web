@@ -100,10 +100,19 @@
       bubbles.palette,
       projectCircleField,
     );
-    const cityMotion = { focus: 0, firework: 0 };
+    const cityMotion = { focus: 0, firework: 0, blend: 1 };
+    const outgoingCityFrame = new Float32Array(frame.length);
     let selectedCity = -1, cityStep = "columns";
     let cityStart, cityOffset, axisHeight;
+    let outgoingWidth, outgoingHeight;
     let pageTween, cityReadyAt = Infinity;
+    const cityColumns = bubbles.cities.map((_, index) => {
+      const column = document.createElement("div");
+      column.className = "city-entry";
+      column.addEventListener("click", () => selectCity(index));
+      entries.append(column);
+      return column;
+    });
     const axisButtons = bubbles.cities.map(([name], index) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -112,15 +121,12 @@
       label.textContent = name;
       button.append(label);
       button.addEventListener("click", () => selectCity(index));
+      button.addEventListener("pointerenter", event => {
+        if (event.pointerType !== "touch") cityColumns[index].classList.add("is-previewed");
+      });
+      button.addEventListener("pointerleave", () => cityColumns[index].classList.remove("is-previewed"));
       axis.append(button);
       return button;
-    });
-    const cityColumns = bubbles.cities.map((_, index) => {
-      const column = document.createElement("div");
-      column.className = "city-entry";
-      column.addEventListener("click", () => selectCity(index));
-      entries.append(column);
-      return column;
     });
     function axisElement(tag, attrs) {
       const el = document.createElementNS(names.namespaceURI, tag);
@@ -146,25 +152,35 @@
 
     function selectCity(index) {
       if (axis.inert || index === selectedCity && cityStep !== "clearing") return;
+      const switching = selectedCity >= 0 && !reducedMotion.matches;
+      const returning = !nextAct.hidden;
       if (selectedCity < 0) cityOffset = window.scrollY - cityStart;
+      if (switching) {
+        // Start from the visible dots even if another switch or morph is still playing.
+        composeCityFrame();
+        outgoingCityFrame.set(frame);
+        outgoingWidth = width;
+        outgoingHeight = height;
+      }
       pageTween?.kill();
       pageTween = null;
       gsap.killTweensOf(cityMotion);
       selectedCity = index;
       cityStep = "columns";
       cityMotion.firework = 0;
+      cityMotion.blend = switching ? 0 : 1;
       cityReadyAt = Infinity;
-      if (!nextAct.hidden) {
-        hideNextAct();
-        scrollPage(cityScrollTop());
-      }
       fitFirework();
       showAxisSelection();
       if (!axis.contains(document.activeElement)) axis.focus({ preventScroll: true });
-      if (cityMotion.focus < 1) {
+      if (switching) {
+        cityMotion.focus = 1;
+        gsap.to(cityMotion, { blend: 1, duration: returning ? .90 : .52, ease: "sine.inOut", onUpdate: requestDraw });
+      } else if (cityMotion.focus < 1) {
         const duration = reducedMotion.matches ? 0 : .34;
         gsap.to(cityMotion, { focus: 1, duration, ease: "power1.out", onUpdate: requestDraw });
       }
+      if (returning) scrollBetweenScenes(cityScrollTop, hideNextAct);
       requestDraw();
     }
 
@@ -216,9 +232,7 @@
         showNextActCity();
         nextAct.hidden = false;
       }
-      const destination = enter ? () => nextAct.offsetTop : cityScrollTop;
-      function finish() {
-        pageTween = null;
+      scrollBetweenScenes(enter ? () => nextAct.offsetTop : cityScrollTop, () => {
         if (enter) {
           nextActTitle.focus({ preventScroll: true });
         } else {
@@ -226,14 +240,21 @@
           hideNextAct();
           axis.focus({ preventScroll: true });
         }
+      });
+    }
+
+    function scrollBetweenScenes(destination, onArrival) {
+      function finish() {
+        pageTween = null;
+        onArrival();
         requestDraw();
       }
-      if (reducedMotion.matches) {
+      const from = window.scrollY;
+      if (reducedMotion.matches || Math.abs(from - destination()) <= 1) {
         scrollPage(destination());
         finish();
         return;
       }
-      const from = window.scrollY;
       const travel = { value: 0 };
       pageTween = gsap.to(travel, {
         value: 1, duration: .75, ease: "power2.inOut",
@@ -249,7 +270,8 @@
     }
 
     function canAdvanceCity(direction) {
-      return !pageTween && cityStep !== "clearing" && (direction < 0 || performance.now() >= cityReadyAt);
+      return !pageTween && cityMotion.blend === 1 && cityStep !== "clearing"
+        && (direction < 0 || performance.now() >= cityReadyAt);
     }
 
     function advanceCity(direction) {
@@ -278,7 +300,7 @@
     }
 
     function startCityReadingWhenShown() {
-      if (selectedCity < 0 || cityReadyAt !== Infinity || pageTween) return;
+      if (selectedCity < 0 || cityReadyAt !== Infinity || pageTween || cityMotion.blend < 1) return;
       if (cityStep === "later" || cityStep === "columns" && cityMotion.focus === 1 && cityMotion.firework === 0
           || cityStep === "firework" && cityMotion.firework === 1) {
         cityReadyAt = performance.now() + readingTime;
@@ -419,8 +441,8 @@
       renderer.draw(frame, reveal === 0 ? explanationOrder : circleOrder, 1);
     }
 
-    function drawSelectedCity() {
-      const { focus, firework } = cityMotion;
+    function composeCityFrame() {
+      const { focus, firework, blend } = cityMotion;
       frame.set(endFrame);
       const backgroundOpacity = Math.max(0, 1 - .85 * focus - .15 * firework);
       for (const index of circleOrder) {
@@ -431,7 +453,16 @@
         frame[k] += (fireworkPositions[index * 2] - frame[k]) * firework;
         frame[k + 1] += (fireworkPositions[index * 2 + 1] - frame[k + 1]) * firework;
       }
-      renderer.draw(frame, circleOrder, 1);
+      if (blend < 1) {
+        const outgoing = 1 - blend;
+        const scaleX = width / outgoingWidth, scaleY = height / outgoingHeight;
+        for (const index of circleOrder) {
+          const k = index * 6;
+          frame[k] += (outgoingCityFrame[k] * scaleX - frame[k]) * outgoing;
+          frame[k + 1] += (outgoingCityFrame[k + 1] * scaleY - frame[k + 1]) * outgoing;
+          frame[k + 5] += (outgoingCityFrame[k + 5] - frame[k + 5]) * outgoing;
+        }
+      }
     }
 
     function draw() {
@@ -455,7 +486,8 @@
       if (explorer.active) {
         explorer.draw(frame, order, renderer);
       } else if (selectedCity >= 0) {
-        drawSelectedCity();
+        composeCityFrame();
+        renderer.draw(frame, circleOrder, 1);
       } else if (t === 1) {
         if (matrixOpacity > 0) {
           if (matrixOpacity === 1) renderer.draw(target, order);

@@ -136,6 +136,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
+  transition: color 220ms ease;
   cursor: pointer;
   touch-action: pan-y;
 }
@@ -168,6 +169,13 @@
   inset-block: 0;
   cursor: pointer;
   touch-action: pan-y;
+  transition: background-color 160ms ease;
+}
+@media (hover: hover) {
+  .city-entry:is(:hover, .is-previewed) { background-color: rgb(255 255 255 / 7%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .city-axis-city, .city-entry { transition: none; }
 }
 #next-act:not([hidden]) {
   display: grid;
