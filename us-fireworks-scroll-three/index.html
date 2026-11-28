@@ -11,7 +11,7 @@
   <script defer src="../us-fireworks-cloud/cloud-data.js"></script>
   <script defer src="../us-fireworks-sphere/sphere-data.js"></script>
   <script defer src="../us-fireworks-sphere/layout.js"></script>
-  <link rel="stylesheet" href="style.css?v=city-entry-preview">
+  <link rel="stylesheet" href="style.css?v=firework-color-columns">
   <script defer src="circle-layout.js"></script>
   <script defer src="../us-fireworks-scroll/matrix-layout.js"></script>
   <script defer src="../us-fireworks-scroll/vendor/gsap.min.js"></script>
@@ -19,7 +19,7 @@
   <script defer src="boston-river.js?v=shared-insets"></script>
   <script defer src="renderer.js?v=color-explanation"></script>
   <script defer src="city-layout.js?v=city-firework-bloom"></script>
-  <script defer src="color-explanation.js?v=city-axis-switch-complete-cutouts"></script>
+  <script defer src="color-explanation.js?v=firework-color-columns"></script>
   <script defer src="assets/photo-captions.js"></script>
   <script defer src="photo-explorer.js"></script>
   <script defer src="story.js?v=smooth-city-return"></script>
@@ -37,11 +37,8 @@
         <svg id="cities" role="group" aria-label="Cities in the photo grid" aria-hidden="true"></svg>
         <section id="color-explanation" aria-label="The colors of fireworks">
           <h2 class="color-question" aria-hidden="true">Why do fireworks have different colors?</h2>
-          <div class="color-gallery" aria-hidden="true"></div>
-          <div class="color-captions">
-            <p class="color-summary" aria-hidden="true">Seven fireworks colors</p>
-            <p class="color-point-caption" aria-hidden="true">One dot for each color</p>
-          </div>
+          <div class="color-gallery" role="group" aria-label="Firework colors" inert></div>
+          <div class="color-captions" aria-hidden="true"></div>
         </section>
         <div id="city-entries" aria-hidden="true" hidden></div>
         <p id="failure" role="alert" hidden>The photos could not load. Please reload this page.</p>

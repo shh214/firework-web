@@ -15,9 +15,8 @@
     ["blue", "19345201070", "CuCl", "Blue", [125.7, 49.4, 50.1], .71, true],
   ];
   const assetPath = "assets/color-explanation/";
-  const firstColorStep = 2;
-  const overviewStep = firstColorStep + colors.length;
-  const pointStep = overviewStep + 1;
+  const questionStep = 1;
+  const galleryStep = 2;
   const wheelThreshold = 140;
   const cityWheelThreshold = 48;
   const reverseWheelThreshold = 440;
@@ -29,8 +28,8 @@
     let step = -1, readyAt = 0;
     let lastWheel = -Infinity, wheelDirection = 0, wheelDistance = 0;
     let touch;
-    const isAnchored = () => step <= pointStep;
-    const anchor = () => step < 0 ? 0 : Math.round(start + (end - start) * step / pointStep);
+    const isAnchored = () => step <= galleryStep;
+    const anchor = () => step < 0 ? 0 : Math.round(start + (end - start) * step / galleryStep);
     const canAdvance = (direction, now = performance.now()) => direction < 0 || now >= readyAt;
 
     function scrollTo(top) {
@@ -51,7 +50,7 @@
 
     function advance(direction) {
       if (!isAnchored()) {
-        select(pointStep);
+        select(galleryStep);
         return;
       }
       if (step === -1 && direction < 0) return;
@@ -67,7 +66,7 @@
       if (!isAnchored() && cityEntry.syncScroll()) return;
       if (step === -1 && window.scrollY > 0) advance(1);
       if (isAnchored()) scrollTo(anchor());
-      else if (entersFromCities(-1, 0)) select(pointStep);
+      else if (entersFromCities(-1, 0)) select(galleryStep);
     }
 
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -131,7 +130,7 @@
     window.addEventListener("keydown", event => {
       if (start === undefined || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
       const control = event.target.closest?.("button, a, input, textarea, select, [contenteditable]");
-      if (control && (event.key === " " || !control.matches(".city-axis-city"))) return;
+      if (control && (event.key === " " || !control.matches(".city-axis-city, .color-slot"))) return;
       const direction = { ArrowDown: 1, PageDown: 1, ArrowUp: -1, PageUp: -1 }[event.key]
         ?? (event.key === " " ? (event.shiftKey ? -1 : 1) : 0);
       if (!direction) return;
@@ -158,8 +157,8 @@
         end = nextEnd;
         if (firstLayout) {
           const y = window.scrollY;
-          const initial = y <= 0 ? -1 : y > end ? pointStep + 1
-            : Math.max(0, Math.round(pointStep * (y - start) / (end - start)));
+          const initial = y <= 0 ? -1 : y > end ? galleryStep + 1
+            : Math.max(0, Math.round(galleryStep * (y - start) / (end - start)));
           select(initial, true);
         } else if (isAnchored()) {
           scrollTo(anchor());
@@ -174,17 +173,18 @@
     const question = section.querySelector(".color-question");
     const gallery = section.querySelector(".color-gallery");
     const captions = section.querySelector(".color-captions");
-    const summary = section.querySelector(".color-summary");
-    const pointCaption = section.querySelector(".color-point-caption");
-    const slots = colors.map(([family, id, formula, name, [zoom, centerX, centerY], relativeSize, completed]) => {
+    const slots = colors.map(([family, id, formula, name, [zoom, centerX, centerY], relativeSize, completed], column) => {
       const index = photoIndex.get(id);
       if (circles[index]?.family !== family) {
         throw new Error("Color explanation point does not match the circle layout: " + family);
       }
 
-      const slot = document.createElement("div");
+      const slot = document.createElement("button");
+      slot.type = "button";
       slot.className = "color-slot";
-      const burst = document.createElement("div");
+      slot.setAttribute("aria-label", name + ", " + formula);
+      slot.setAttribute("aria-pressed", "false");
+      const burst = document.createElement("span");
       burst.className = "color-burst";
       const picture = new Image();
       picture.alt = "";
@@ -194,6 +194,11 @@
       burst.append(picture);
       slot.append(burst);
       gallery.append(slot);
+      slot.addEventListener("pointermove", event => {
+        if (event.pointerType === "mouse") highlightColor(column);
+      });
+      slot.addEventListener("focus", () => highlightColor(column));
+      slot.addEventListener("click", () => highlightColor(column));
 
       const caption = document.createElement("p");
       caption.className = "color-caption";
@@ -206,20 +211,41 @@
     });
 
     const animation = { matrixTravel: 0, matrixOpacity: 1, collapse: 0, cityArrival: 0 };
-    let previousStep = -1, pendingOpacity;
+    let previousStep = -1, activeColor = -1, pendingOpacity, cityTransition;
     const scroll = createChapterScroll(showStep, cityEntry, readingTime);
+
+    function highlightColor(column) {
+      if (column === activeColor || (column >= 0 && gallery.inert)) return;
+      activeColor = column;
+      slots.forEach(({ slot, burst, caption }, i) => {
+        const selected = i === column;
+        slot.setAttribute("aria-pressed", String(selected));
+        burst.classList.toggle("is-lit", selected);
+        caption.classList.toggle("is-selected", selected);
+        caption.setAttribute("aria-hidden", String(!selected));
+      });
+    }
+
+    gallery.addEventListener("pointerleave", event => {
+      if (event.pointerType === "mouse") {
+        highlightColor(slots.findIndex(({ slot }) => slot.matches(":focus-visible")));
+      }
+    });
+    gallery.addEventListener("focusout", event => {
+      if (!gallery.contains(event.relatedTarget) && !gallery.matches(":hover")) highlightColor(-1);
+    });
+
     function resize(width, height) {
-      const inset = width * .08;
-      const spacing = (width - inset * 2) / (slots.length - 1);
+      const spacing = width / slots.length;
       const burstSize = Math.min(spacing * .86, height * .126, 130);
       const dotSize = Math.min(spacing * .42, Math.max(12, Math.min(width, height) * .028));
       slots.forEach((entry, i) => {
-        entry.x = inset + i * spacing;
+        entry.x = (i + .5) * spacing;
         entry.y = height * .51;
         entry.diameter = dotSize * entry.relativeSize;
         entry.burst.style.width = burstSize * entry.relativeSize + "px";
-        entry.slot.style.left = entry.x + "px";
-        entry.slot.style.top = entry.y + "px";
+        entry.slot.style.left = i * spacing + "px";
+        entry.slot.style.width = spacing + "px";
       });
     }
 
@@ -236,23 +262,38 @@
       }
     }
 
+    function playCityTransition(entering, immediate) {
+      cityTransition?.kill();
+      if (immediate) {
+        animation.collapse = animation.cityArrival = Number(entering);
+        return;
+      }
+      const reduced = reducedMotion.matches;
+      cityTransition = gsap.timeline({ onUpdate: requestDraw });
+      if (entering) {
+        cityTransition.to(animation, { collapse: 1, duration: reduced ? .15 : .64, ease: "power2.inOut" });
+        cityTransition.to(animation, { cityArrival: 1, duration: reduced ? .15 : 1.35, ease: "none" },
+          reduced ? "+=.12" : "+=.32");
+      } else {
+        if (animation.cityArrival > 0) {
+          cityTransition.to(animation, { cityArrival: 0, duration: reduced ? .15 : .85, ease: "none" });
+        }
+        if (animation.collapse > 0) {
+          cityTransition.to(animation, { collapse: 0, duration: reduced ? .15 : .50, ease: "power2.inOut" });
+        }
+      }
+    }
+
     function showStep(step, immediate) {
       pendingOpacity = undefined;
-      const explaining = step >= firstColorStep && step < overviewStep;
-      const questionVisible = step === 1;
-      const allVisible = step === overviewStep;
-      const pointsVisible = step === pointStep;
-      section.dataset.mode = questionVisible ? "question" : explaining ? "explain"
-        : allVisible ? "together" : pointsVisible ? "points" : "outside";
+      const questionVisible = step === questionStep;
+      const exploring = step === galleryStep;
+      const enteringCities = step > galleryStep;
+      section.dataset.mode = questionVisible ? "question" : exploring ? "explore" : enteringCities ? "cities" : "outside";
       question.setAttribute("aria-hidden", String(!questionVisible));
-      summary.setAttribute("aria-hidden", String(!allVisible));
-      pointCaption.setAttribute("aria-hidden", String(!pointsVisible));
-      slots.forEach(({ burst, caption }, i) => {
-        const selected = explaining && i === step - firstColorStep;
-        burst.classList.toggle("is-lit", selected || step >= overviewStep);
-        caption.classList.toggle("is-selected", selected);
-        caption.setAttribute("aria-hidden", String(!selected));
-      });
+      captions.setAttribute("aria-hidden", String(!exploring));
+      gallery.inert = true;
+      highlightColor(-1);
 
       if (immediate || (step >= 0) !== (previousStep >= 0)) {
         setAnimation("matrixTravel", Number(step >= 0), step >= 0 ? 1.35 : .85, "none", immediate);
@@ -260,11 +301,8 @@
       if (immediate || (step <= 0) !== (previousStep <= 0)) {
         setAnimation("matrixOpacity", Number(step <= 0), .55, "power2.inOut", immediate);
       }
-      if (immediate || (step >= pointStep) !== (previousStep >= pointStep)) {
-        setAnimation("collapse", Number(step >= pointStep), .64, "power2.inOut", immediate);
-      }
-      if (immediate || (step > pointStep) !== (previousStep > pointStep)) {
-        setAnimation("cityArrival", Number(step > pointStep), step > pointStep ? 1.35 : .85, "none", immediate);
+      if (immediate || enteringCities !== (previousStep > galleryStep)) {
+        playCityTransition(enteringCities, immediate);
       }
       previousStep = step;
       requestDraw();
@@ -273,12 +311,14 @@
     function startReadingWhenShown() {
       if (!scroll.awaitingScene || pendingOpacity) return;
       const { matrixTravel, matrixOpacity, collapse, cityArrival } = animation;
+      const atCities = Number(previousStep > galleryStep);
       if (matrixTravel !== Number(previousStep >= 0) || matrixOpacity !== Number(previousStep <= 0)
-          || collapse !== Number(previousStep >= pointStep) || cityArrival !== Number(previousStep > pointStep)) return;
+          || collapse !== atCities || cityArrival !== atCities) return;
 
       const transitions = section.getAnimations({ subtree: true })
         .filter(item => item.transitionProperty === "opacity" && item.playState !== "finished");
       if (!transitions.length) {
+        if (previousStep === galleryStep) gallery.inert = false;
         scroll.sceneShown();
         return;
       }
